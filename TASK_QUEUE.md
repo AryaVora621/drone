@@ -1,23 +1,27 @@
 # Task Queue
 
 ## Open
-- Test motor response with 0-100 slider on web dashboard
-- Verify stop at slider 0 is reliable (no drift)
-- Design ESP-NOW controller link (phase 2 hardware and protocol)
-- Flash ESP32-GENERIC-OTA for WebREPL support (eliminate serial dependency)
+- User: pair "Drone Controller" from PC/phone and verify 4 axes track
+- User: send 'c' over serial with sticks at rest to calibrate
+- User: open sim/ in browser, pair Drone Controller, fly (keyboard fallback works without gamepad)
+- (later) Port espnow-rclink TX with ADC input (replace PPM reader)
+- (later) Build rx_test interim receiver to validate ESP-NOW link
+- (later) Flash ESP-FC on drone ESP32-U, set built-in SPI Rx
+- Buy remaining drone parts (see globalPartsList.txt)
 
 ## In Progress
-- Document project setup: git init, CLAUDE.md, push to GitHub
+- (none)
 
 ## Done
 - Flash MicroPython v1.28.0 to ESP32
-- Implement 50Hz PWM via duty_u16
-- Implement web server with dark-theme slider UI
-- Connect to WPA2 WiFi (found working SSID)
-- Identify SimonK default pulse range (1060-1860us)
-- Verify motor spins and responds to throttle
-- Document all issues in DEVLOG.md
-- Remove boot calibration (was corrupting ESC)
-- Change slider to 0-100 (no negative values)
-- Create PROJECT_GOALS.md with full roadmap
-- Create CLAUDE.md with project instructions
+- Implement 50Hz PWM via duty_u16 (1060-1860us SimonK)
+- Web dashboard slider 0-100
+- Identify SimonK range + remove boot calibration
+- Document issues in DEVLOG.md (Issue 1-10)
+- Diagnose 40% cutoff (BMS trip) + LVC beep
+- globalPartsList.txt created/refined
+- Controller link research (ESP-FC / espnow-rclink / ESP32-U)
+- CONTROLLER_PLAN.md written
+- Build + flash `controller/` BLE gamepad (PlatformIO); confirmed advertising "Drone Controller"
+- Build 3D FPV sim (`sim/fpv.html` + `sim/fpv.js` + local `three.min.js`): reads BLE gamepad (Mode-2), visible quad + chase cam (C = onboard FPV); node syntax-checked
+- Debugged controller hardware: RX wire (GPIO34) was disconnected, causing floating pin noise on RY. Resoldered, all 4 axes working.

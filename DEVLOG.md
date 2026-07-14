@@ -180,24 +180,69 @@ updates. Accept the serial wedge issue.
 
 ---
 
-## Current status (end of session)
+## Session 3: Jul 14, 2026 (afternoon)
 
-**What works:**
-- ESP32 boots, connects to WiFi, serves web dashboard at 192.168.0.184
-- Motor arms at 1060us for 3 seconds, no calibration needed
-- Slider 0 (1460us) = stop, slider 100 (1860us) = full forward
-- Motor spins smoothly, strong torque, good throttle response
-- Users report slider 25+ gives reliable motion
+### Issue 11: Right stick Y (GPIO35) stuck at -1 — disconnected RX wire
 
-**What doesn't work:**
-- WebREPL (module not in ESP32_GENERIC build)
-- Serial port reliability (AppleUSBSLCOM wedges after upload cycles)
-- "Calibrate Motor" button (re-corrupts ESC endpoints — don't click it)
-- Boot calibration (removed — the ESC doesn't need it)
+**Symptom:** In the FPV sim, pitch was always negative and randomly triggering. Hardware
+tester (https://hardwaretester.com/gamepad) showed axis 3 (RY) stuck at -1, drifting
+between -1 and -0.5 even when not touching the stick.
 
-**Key lesson:** The SimonK 30A ESC with forward-only aircraft firmware just works with
-its factory default 1060-1860us range. All we do is arm at 1060us for 3s, then send
-1460-1860us for 0-100% throttle. No calibration, no bidirectional mode, no tricks.
+**Initial hypothesis:** Floating ADC pin on GPIO35 (RY). The slow drift and snap-back
+pattern is characteristic of parasitic capacitance on an unconnected trace.
+
+**Investigation:**
+- Resoldered GPIO35 — no improvement
+- Checked continuity from ESP32 to joystick module — fine
+- Measured resistance VCC to RY: 7.9k ohm (reasonable for 10k pot)
+- Measured joystick VCC: 3.34V (correct)
+- Measured RX voltage while moving stick: RX moved, RY voltage swung 0-3.3V
+- This looked like crosstalk, but the real cause was simpler
+
+**Root cause:** The RX wire (GPIO34) was never connected — either never soldered or broke off. The floating GPIO34 pin read ADC noise that happened to correlate with stick movement (mechanical vibration), creating the illusion of crosstalk from RX into RY. Once the wire was soldered, both axes read cleanly.
+
+**Fix:** Soldered the RX wire to GPIO34. No firmware changes needed.
+
+## Tooling
+- `controller/src/diag.cpp` — diagnostic sketch that prints raw ADC values for all 4 pins over serial. Upload to confirm hardware readings without the BLE layer.
+
+---
+
+## Session 2: Jul 14, 2026
+
+### Issue 9: Motor cuts out above ~40% throttle with prop mounted
+
+**Symptom:** Mounted a tri-blade 5in prop and ran the motor. Above ~40% throttle it
+went silent and stopped dead; web dashboard stayed reachable the whole time. Replugging
+the battery into the ESC restored operation, but it cut out again at the same ~40% point.
+
+**Root cause:** Power source, not firmware. The DIY 3x18650 pack (market cells, internal
+BMS) cannot supply the current a prop load demands. The dashboard staying up rules out an
+ESP32 brownout. The silent, latching cut (no beep) that clears on battery replug is the
+signature of a **BMS over-current trip**, not an ESC LVC. A tri-blade 5in prop overprops
+the A2212/6T 2200KV (a plane outrunner, not an FPV motor), pushing current past the pack's
+~5-10A ceiling above 40% throttle.
+
+**Fix:** Replace the DIY 18650 pack with a proper high-C 3S LiPo (~2200-3000mAh, 80C) so
+the pack can deliver the current without tripping. Also plan to drop the tri-blade prop to
+a 5030 two-blade to keep the motor/ESC within thermal/current limits.
+
+---
+
+### Issue 10: ESC beeps after being powered a while (low-voltage warning)
+
+**Symptom:** With the DIY 18650 pack connected, the ESC starts beeping periodically after
+being plugged in for a while (not at power-up).
+
+**Root cause:** Low input voltage (LVC warning). A beep that starts at power-up is normal
+(cell-count detection + arm tone). A beep that begins later, while idle, means the pack has
+sagged toward the ~3.0-3.3V/cell cutoff (~9-10V for 3S). The small DIY pack drains even
+while the ESC sits armed and idle.
+
+**Confirm:** Measure pack voltage when beeping. ~11-12.6V = healthy; ~9-10V or below = LVC.
+
+**Fix:** Same as Issue 9 - the 80C LiPo holds voltage under load and won't sag to LVC.
+Also avoid leaving the ESC armed on the pack idle, which slowly drains it.
 
 ---
 
