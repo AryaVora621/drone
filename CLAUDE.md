@@ -22,8 +22,19 @@ Custom drone: ESP32 DevKitC V4 + A2212 2200KV motor + SimonK 30A ESC. MicroPytho
 
 **Ctrl+C swallowed.** MicroPython `KeyboardInterrupt` is subclass of `Exception`, so the web server's `except Exception: pass` catches it. Use hardware reset + Ctrl+C burst during boot arming window (before web server starts).
 
+**Controller axis stuck at -1?** Check ALL wires, not just the symptomatic pin. The RX wire (GPIO34) was disconnected, making the floating pin read ADC noise that looked like crosstalk on RY. Always check continuity on every joystick wire before assuming a hardware defect or adding firmware workarounds.
+
+## Controller
+- ESP32 BLE gamepad (PlatformIO project in `controller/`)
+- Pins: LX=GPIO32, LY=GPIO33, RX=GPIO34, RY=GPIO35 (all ADC1, 3.3V max)
+- Device name: "Drone Controller". Pair in Bluetooth, then use in sim or hardwaretester.com
+- Calibration: send 'c' over serial with sticks at rest (stored in NVS)
+- Upload port: `/dev/cu.SLAB_USBtoUART` (NOT the drone's `/dev/cu.usbserial-0001`)
+
 ## Key files
 - `main.py`: firmware — PWM, WiFi, web server, arming
+- `controller/src/main.cpp`: BLE gamepad firmware (PlatformIO)
+- `controller/src/diag.cpp`: ADC diagnostic sketch (upload to check raw pin readings)
 - `DEVLOG.md`: full issue history with root causes and fixes
 - `PROJECT_GOALS.md`: roadmap from bench test to ESP-NOW to full drone
 - `CHECKPOINT_LAST.md`: current session state and next actions
