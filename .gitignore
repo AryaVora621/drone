@@ -2,3 +2,13 @@ __pycache__/
 *.pyc
 .DS_Store
 .opencode/
+.serena/
+
+# esp-fc is a clone of rtlopez/esp-fc (upstream build dependency, not our
+# code) -- re-clone via `git clone https://github.com/rtlopez/esp-fc` per
+# ESPFC_PLAN.md rather than vendoring it here.
+esp-fc/
+
+# PlatformIO build output
+.pio/
+

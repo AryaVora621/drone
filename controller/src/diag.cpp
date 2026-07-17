@@ -47,8 +47,3 @@ void loop() {
                 v32, v33, v34, v35, vcc_warn);
   delay(100);
 }
-```
-
-<｜DSML｜tool_calls>
-<｜DSML｜invoke name="write">
-<｜DSML｜parameter name="filePath" string="true">/Users/aryavora/Desktop/Personal Projects/drone/controller/src/diag.cpp

@@ -5,9 +5,13 @@ from machine import Pin, PWM
 SSID = "Bhupendra Patel_8G"   # _8G = WPA2 2.4GHz SSID the ESP32 can join (plain name hung at WPA3 auth)
 PASSWORD = "9833359932ni"
 
-# 4 ESC signal pins (matches wiring.md): ESC1=FL, ESC2=FR, ESC3=BR, ESC4=BL
+# 4 ESC signal pins: ESC1=FL, ESC2=FR, ESC3=BR, ESC4=BL
+# NOTE: FL/FR swapped from wiring.md's original plan (12<->14) — the physical
+# signal wires for those two corners ended up crossed. Swapped here in
+# software so the dashboard labels match the physical motor that responds,
+# rather than re-soldering. If you ever re-solder those two, swap this back.
 # FINAL layout 2026-07-17: FL=14, FR=12, BR=17, BL=16
-ESC_PINS = [14, 12, 17, 16]
+ESC_PINS = [12, 14, 17, 16]
 STATUS_LED_PIN = 2      # onboard blue LED
 FREQ = 50
 
@@ -112,34 +116,39 @@ def auto_sequence(target, ramp_s, hold_s):
 
 # ---------- SAFE CALIBRATION (factory default range) ----------
 # SimonK default range is 1060-1860us. If an ESC has stale calibration,
-# power-cycle LiPo while signal is at 1860us (safe max) to retrain.
-# USAGE: 1) click CALIBRATE button  2) disconnect LiPo  3) reconnect within 10s
-#        4) ESCs retrain to [1060, 1860]  5) done.
+# power-cycle it WHILE THE SIGNAL IS AT 1860us so it boots into cal entry,
+# then let the signal drop to 1060us while it stays powered so it learns
+# the low endpoint and saves. The ESC must be UNPOWERED before this sequence
+# starts — power-on has to happen during the 1860us hold, not before it.
+# USAGE: 1) disconnect LiPo  2) click CALIBRATE  3) reconnect LiPo during the
+#        1860us hold (the wide window)  4) leave it connected — ESC beeps
+#        confirm max then min as the signal drops  5) done.
 # CRITICAL: NEVER use >1860us for calibration (1940us reversed the range
 # and caused the "motor shot across room" incident — see DEVLOG Issue 4).
 
 CAL_MAX_US = 1860  # NOT 1940 (that caused reversed range)
-CAL_PENDING = {"active": False, "phase": 0}  # phase: 0=idle, 1=1860us, 2=1060us, 3=done
+CAL_PENDING = {"active": False, "phase": 0}  # phase: 0=idle, 1=1860us(plug in now), 2=1060us(hold still), 3=done
 
 def calibrate_sequence():
-    """Sets all 4 ESCs to CAL_MAX_US for 2s, then drops to PULSE_MIN_US for 3s.
-    The user must power-cycle the LiPo DURING the high-pulse window so the
-    ESCs boot seeing 1860us and enter calibration."""
+    """Holds CAL_MAX_US for 6s (user plugs LiPo in during this window so the
+    ESC boots seeing max throttle), then drops to PULSE_MIN_US for 4s while
+    staying powered (ESC learns the low endpoint here — do not touch the
+    battery during this phase)."""
     CAL_PENDING["active"] = True
     try:
-        # Phase 1: hold 1860us — user must DISCONNECT LiPo during this window
-        print("CALIBRATION: PHASE 1 — setting all 4 to", CAL_MAX_US, "us")
+        # Phase 1: hold 1860us — user must PLUG IN the (already-disconnected) LiPo now
+        print("CALIBRATION: PHASE 1 — holding", CAL_MAX_US, "us, plug in LiPo now")
         CAL_PENDING["phase"] = 1
         for i in range(4):
             set_motor(i, 100)  # 100 = 1860us
-        time.sleep(2)
+        time.sleep(6)
 
-        # Phase 2: drop to 1060us — user must RECONNECT LiPo during this window
-        print("CALIBRATION: PHASE 2 — dropping to", PULSE_MIN_US, "us")
+        # Phase 2: drop to 1060us — LiPo must stay connected/powered through this window
+        print("CALIBRATION: PHASE 2 — dropping to", PULSE_MIN_US, "us, do not touch battery")
         CAL_PENDING["phase"] = 2
         for i in range(4):
             set_motor(i, 0)  # 0 = 1060us
-        time.sleep(3)
+        time.sleep(4)
 
         # Phase 3: done
         print("CALIBRATION: done — ESCs retrained to [1060, 1860]")
@@ -172,7 +181,8 @@ input[type=number]{width:70px;padding:6px;font-size:1em}
 #status{margin-top:14px;color:#90caf9;min-height:1.4em}
 #seqstatus{color:#ffb74d}
 /* Calibration step overlay */
-#calsteps{display:none;margin:16px auto;max-width:520px;border-radius:12px;padding:20px;text-align:center}
+#calsteps{display:none;margin:16px auto;max-width:520px;border-radius:12px;padding:20px;text-align:center;position:relative;z-index:11}
+#calsteps.phase0{display:block;background:#4e342e;border:3px solid #ffab91}
 #calsteps.phase1{display:block;background:#b71c1c;border:3px solid #ff5252}
 #calsteps.phase2{display:block;background:#1b5e20;border:3px solid #69f0ae}
 #calsteps.phase3{display:block;background:#0d47a1;border:3px solid #448aff}
@@ -209,6 +219,7 @@ input[type=number]{width:70px;padding:6px;font-size:1em}
           <div class="step-action" id="calaction"></div>
           <div class="step-detail" id="caldetail"></div>
           <div class="step-timing" id="caltime"></div>
+          <button id="calcontinue" style="display:none;margin-top:14px;padding:10px 18px;background:#455a64;color:#fff;border:none;border-radius:6px;font-size:1em" onclick="beginCalSequence()">LiPo is disconnected — continue</button>
         </div>
 
         <div id="status">Manual: drag a slider. Or set Target/Ramp/Hold and START from a safe distance.</div>
@@ -225,14 +236,25 @@ function startSeq(){const t=document.getElementById('tgt').value,r=document.getE
   document.getElementById('status').textContent='Auto sequence running — stand clear!';}
 function abortSeq(){fetch('/seq?action=abort').catch(()=>{});
   document.getElementById('status').textContent='ABORT sent — cutting off';}
-function startCal(){document.getElementById('calstatus').textContent='CALIBRATING — sliders locked';
+var awaitingCalConfirm=false;
+function startCal(){
+  awaitingCalConfirm=true;
+  for(let i=0;i<4;i++){document.getElementById('m'+i).disabled=true;}
+  document.getElementById('calsteps').className='phase0';
+  document.getElementById('caloverlay').className='cal-overlay show';
+  document.getElementById('calstepnum').textContent='STEP 0 of 3';
+  document.getElementById('calaction').textContent='DISCONNECT the LiPo battery now';
+  document.getElementById('caldetail').textContent='The ESC has to power on WHILE it sees full-throttle signal to enter calibration. Disconnect the LiPo first, confirm it is unplugged, then continue.';
+  document.getElementById('caltime').textContent='';
+  document.getElementById('calcontinue').style.display='inline-block';
+}
+function beginCalSequence(){
+  awaitingCalConfirm=false;
+  document.getElementById('calcontinue').style.display='none';
+  document.getElementById('calstatus').textContent='CALIBRATING — sliders locked';
   for(let i=0;i<4;i++){document.getElementById('m'+i).disabled=true;}
   fetch('/calibrate').catch(()=>{});
-  document.getElementById('calsteps').className='phase1';
-  document.getElementById('calstepnum').textContent='STEP 1 of 3';
-  document.getElementById('calaction').textContent='DISCONNECT the LiPo battery';
-  document.getElementById('caldetail').textContent='All 4 motors are held at full throttle signal (1860us). Wait for the ESCs to power down completely — you will hear the motor beeps fade and stop.';
-  document.getElementById('caltime').textContent='You have about 2 seconds. Disconnect now.';}
+}
 function showCalPhase(ph){
   var box=document.getElementById('calsteps');
   var ov=document.getElementById('caloverlay');
@@ -240,15 +262,15 @@ function showCalPhase(ph){
   if(ph===1){
     box.className='phase1';ov.className='cal-overlay show';
     document.getElementById('calstepnum').textContent='STEP 1 of 3';
-    document.getElementById('calaction').textContent='DISCONNECT the LiPo battery';
-    document.getElementById('caldetail').textContent='All 4 motors are held at full throttle signal (1860us). Wait for the ESCs to power down completely — you will hear the motor beeps fade and stop.';
-    document.getElementById('caltime').textContent='Window is open now. Disconnect the LiPo!';
+    document.getElementById('calaction').textContent='PLUG IN the LiPo battery now';
+    document.getElementById('caldetail').textContent='All 4 motors are held at full throttle signal (1860us). Plug the LiPo in now so the ESCs power on while seeing max throttle — you should hear the normal startup beeps.';
+    document.getElementById('caltime').textContent='Window is open for ~6 seconds. Plug in now!';
   } else if(ph===2){
     box.className='phase2';ov.className='cal-overlay show';
     document.getElementById('calstepnum').textContent='STEP 2 of 3';
-    document.getElementById('calaction').textContent='RECONNECT the LiPo battery';
-    document.getElementById('caldetail').textContent='Signal has dropped to arm level (1060us). The ESCs will see power-up at the correct endpoints and play their startup melody to confirm.';
-    document.getElementById('caltime').textContent='Window is open for ~3 seconds. Reconnect now!';
+    document.getElementById('calaction').textContent='DO NOT TOUCH the battery';
+    document.getElementById('caldetail').textContent='Signal has dropped to minimum (1060us) while the ESCs stay powered. They are learning the low endpoint now — leave the LiPo connected and wait for the confirmation beep.';
+    document.getElementById('caltime').textContent='Window is ~4 seconds. Leave it connected.';
   } else if(ph===3){
     box.className='phase3';ov.className='cal-overlay show';
     document.getElementById('calstepnum').textContent='STEP 3 of 3 — COMPLETE';
@@ -263,7 +285,7 @@ setInterval(()=>{fetch('/seqstate').then(r=>r.json()).then(d=>{
     document.getElementById('calstatus').textContent='CALIBRATING — sliders disabled';
     for(let i=0;i<4;i++){document.getElementById('m'+i).disabled=true;}
     showCalPhase(d.cal_phase);
-  } else {
+  } else if(!awaitingCalConfirm){
     document.getElementById('calstatus').textContent='';
     for(let i=0;i<4;i++){document.getElementById('m'+i).disabled=false;}
     if(d.cal_phase===0){showCalPhase(0);}

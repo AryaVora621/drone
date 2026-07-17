@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Drone FPV Sim - Drone Controller</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: monospace; }
+  #view { position: fixed; inset: 0; }
+  #view canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #6f6; text-shadow: 0 0 4px #000; z-index: 2; }
+  #hud .panel { position: absolute; padding: 8px 10px; }
+  #help { left: 12px; bottom: 12px; font-size: 12px; line-height: 1.5; color: #9f9; }
+  #status { right: 12px; top: 12px; text-align: right; font-size: 12px; }
+  #thr { left: 12px; top: 12px; width: 22px; height: 160px; border: 1px solid #6f6; position: relative; }
+  #thrfill { position: absolute; bottom: 0; left: 0; width: 100%; background: #6f6; }
+  #axisdebug { left: 12px; top: 180px; font-size: 10px; color: #ff9; line-height: 1.25; white-space: nowrap; }
+  #settings { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: #111; color: #eee; font-family: monospace; font-size: 13px;
+    padding: 20px 24px; border-radius: 8px; border: 1px solid #555; z-index: 100; min-width: 280px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.9); pointer-events: auto; }
+  #settings label { display: block; margin: 6px 0; }
+  #settings input[type="range"] { width: 120px; vertical-align: middle; accent-color: #6f6; }
+  #settings input[type="checkbox"] { vertical-align: middle; accent-color: #6f6; }
+  #settings span { color: #8f8; }
+  #settings hr { border: none; border-top: 1px solid #444; margin: 10px 0; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="hud">
+  <div id="thr"><div id="thrfill"></div></div>
+  <div id="status" class="panel"></div>
+  <div id="axisdebug" class="panel"></div>
+  <div id="help" class="panel">
+    INPUT: Drone Controller (BLE gamepad) — auto-maps axes<br/>
+    Wiggle both sticks → axes auto-detect (4 responsive).<br/>
+    M = re-map &nbsp; N = map &nbsp; C = FPV &nbsp; Z = settings &nbsp; R = reset &nbsp; Space = pause
+  </div>
+</div>
+<div id="settings"></div>
+<div id="flash" style="position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:5;"></div>
+<script src="three.min.js"></script>
+<script src="fpv.js"></script>
+</body>
+</html>
