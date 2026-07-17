@@ -271,3 +271,46 @@ Also avoid leaving the ESC armed on the pack idle, which slowly drains it.
 | `TASK_QUEUE.md` | Active task tracking |
 | `ai/tools/force_upload.py` | Aggressive upload with hardware reset fallback |
 | `ai/tools/read_serial.py` | Simple serial reader with DTR/RTS reset |
+
+---
+
+## Session 4: Jul 17, 2026 (evening — 4-motor build + calibration UI)
+
+### Issue 12: CP2102 serial wedge persists after USB replug
+
+**Symptom:** After physically replugging the USB cable at the Mac, the port re-appears (`/dev/cu.usbserial-0001`) but immediately outputs binary garbage on open. The `force_upload.py` tool and manual `serial.Serial()` open both fail. The wedge now occurs more aggressively than before — even a single open/close cycle can trigger it.
+
+**Root cause:** Same AppleUSBSLCOM DriverKit driver issue as Issue 2, but now appears to be triggered by the DTR/RTS toggles used in the upload tool. The driver enters a state where it passes raw bytes at 115200 but cannot be reconfigured or properly opened with termios.
+
+**Diagnosis:**
+- `ls -la /dev/cu.usbserial-0001` shows the port exists
+- `lsof` shows no process holding it
+- `stty -f /dev/cu.usbserial-0001` (not tested) may confirm it's stuck at 9600
+- Binary output pattern: repeating `\x00\x0c\x0cp` suggests data at wrong baud
+
+**Fix found:** Use DTR reset first to reboot the ESP32 cleanly, then open serial only after 1-2s delay. The `ampy` tool (adafruit-ampy) uses raw REPL protocol which handles the DTR reset properly. Direct pyserial with DTR/RST sequence also works if you properly flush the buffer.
+
+**Workflow that works:**
+1. `python3 -c "import serial; s=serial.Serial('/dev/cu.usbserial-0001',115200,timeout=2); s.dtr=0; s.rts=1; time.sleep(0.1); s.dtr=1; s.rts=0; time.sleep(0.5); s.dtr=0; s.rts=0; time.sleep(8); s.close()"` → board reboots and starts fresh
+2. `ampy --port /dev/cu.usbserial-0001 --baud 115200 put main.py /main.py` → reliable upload
+
+### Issue 13: Safe calibration feature added (with visual step guide)
+
+**What:** Added a `/calibrate` endpoint and `calibrate_sequence()` function that holds all 4 motors at 1860us for 2s then drops to 1060us for 3s. The ESP32 never exceeds 1860us in calibration mode (learned from Issue 4 — 1940us reverses the range).
+
+**Dashboard overlay:** Full-screen color-coded step guide that updates via 300ms poll:
+- Phase 1 (red): DISCONNECT LiPo — motors held at 1860us
+- Phase 2 (green): RECONNECT LiPo — signal at 1060us arm level
+- Phase 3 (blue): Calibration complete — auto-dismisses
+
+**Why:** ESC4 (BL, GPIO16) has corrupted calibration — starts at ~51 throttle (1476us) instead of matching the other three at ~11 (1148us). Factory reset via clean calibration should restore [1060, 1860] endpoints.
+
+**Not tested yet.** User deferred to next session.
+
+### Issue 14: ESC3 (BR) pulses at low throttle
+
+**Symptom:** At slider value 10 (1500us — only 40us above stop), ESC3 pulses/cogs instead of spinning smoothly.
+
+**Root cause:** Normal SimonK behavior at the low end of the forward range. 1500us is barely above the 1460us stop point — the motor doesn't have enough torque to spin cleanly against magnetic cogging. Other ESCs may do the same if observed closely.
+
+**Not a fixable issue.** Minimum usable throttle in flight will be ~20-25%. No action needed.

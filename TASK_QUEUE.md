@@ -1,16 +1,18 @@
 # Task Queue
 
 ## Open
-- User: pair "Drone Controller" from PC/phone and verify 4 axes track
-- User: send 'c' over serial with sticks at rest to calibrate
-- User: open sim/ in browser, pair Drone Controller, fly (keyboard fallback works without gamepad)
-- (later) Port espnow-rclink TX with ADC input (replace PPM reader)
-- (later) Build rx_test interim receiver to validate ESP-NOW link
+- Debug serial upload instability — ampy raw REPL works but paste mode and force_upload wedge repeatedly even after USB replug
+- Run safe calibration on all 4 ESCs to fix BL (starts at ~51/1476us instead of spec ~11/1148us)
+- Confirm all 4 motors spin same speed at low throttle after calibration
+- Verify spin direction per corner (swap 2 bullet connectors if wrong)
+- Build HW-138B inline switch/jumper for USB-vs-buck isolation
+- Pair "Drone Controller" from PC/phone and verify 4 axes track
+- (later) Port espnow-rclink TX with ADC input
 - (later) Flash ESP-FC on drone ESP32-U, set built-in SPI Rx
-- Buy remaining drone parts (see globalPartsList.txt)
+- (later) Buy remaining drone parts
 
 ## In Progress
-- (none)
+- (none — debugging session paused)
 
 ## Done
 - Flash MicroPython v1.28.0 to ESP32
@@ -22,6 +24,10 @@
 - globalPartsList.txt created/refined
 - Controller link research (ESP-FC / espnow-rclink / ESP32-U)
 - CONTROLLER_PLAN.md written
-- Build + flash `controller/` BLE gamepad (PlatformIO); confirmed advertising "Drone Controller"
-- Build 3D FPV sim (`sim/fpv.html` + `sim/fpv.js` + local `three.min.js`): reads BLE gamepad (Mode-2), visible quad + chase cam (C = onboard FPV); node syntax-checked
-- Debugged controller hardware: RX wire (GPIO34) was disconnected, causing floating pin noise on RY. Resoldered, all 4 axes working.
+- Build + flash `controller/` BLE gamepad (PlatformIO)
+- Build 3D FPV sim (`sim/fpv.html` + `sim/fpv.js` + local `three.min.js`)
+- Debugged controller hardware: RX wire (GPIO34) was disconnected
+- Soldered all 4 ESC signal wires: FL=14, FR=12, BR=17, BL=16
+- Soldered MPU6050 (GY-521): VCC→3V3, SDA→21, SCL→22, INT→35 — detected at 0x68 ✅
+- Added safe calibration feature (1860us max, step-by-step visual guide on dashboard)
+- 4-motor web tester dashboard with per-motor sliders + auto ramp/hold/cutoff
